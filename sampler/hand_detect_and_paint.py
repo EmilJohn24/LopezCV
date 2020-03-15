@@ -1,5 +1,10 @@
 import cv2
 import numpy as np
+import operator
+"""
+Huge portions of the code originate/inspired from:
+https://github.com/amarlearning/Finger-Detection-and-Tracking
+"""
 hand_hist = None
 traverse_point = []
 total_rectangle = 9
@@ -8,7 +13,6 @@ hand_rect_one_y = None
 
 hand_rect_two_x = None
 hand_rect_two_y = None
-
 
 def rescale_frame(frame, wpercent=130, hpercent=130):
     width = int(frame.shape[1] * wpercent / 100)
@@ -85,7 +89,6 @@ def hist_masking(frame, hist):
 
     ret, thresh = cv2.threshold(dst, 150, 255, cv2.THRESH_BINARY)
 
-    # thresh = cv2.dilate(thresh, None, iterations=5)
 
     thresh = cv2.merge((thresh, thresh, thresh))
 
@@ -134,7 +137,7 @@ def manage_image_opr(frame, hand_hist):
     hist_mask_image = hist_masking(frame, hand_hist)
     contour_list = contours(hist_mask_image)
     max_cont = max_contour(contour_list)
-
+    max_points = 20
     cnt_centroid = centroid(max_cont)
     cv2.circle(frame, cnt_centroid, 5, [255, 0, 255], -1)
 
@@ -142,16 +145,24 @@ def manage_image_opr(frame, hand_hist):
         hull = cv2.convexHull(max_cont, returnPoints=False)
         defects = cv2.convexityDefects(max_cont, hull)
         far_point = farthest_point(defects, max_cont, cnt_centroid)
+        total_far_point = (0,0)
+        for point in traverse_point:
+            if point is not None:
+                total_far_point = tuple(map(operator.add, point, total_far_point))
+        average_far_point = tuple(int(val/max_points) for val in total_far_point)
         print("Centroid : " + str(cnt_centroid) + ", farthest Point : " + str(far_point))
         cv2.circle(frame, far_point, 5, [0, 0, 255], -1)
-        if len(traverse_point) < 20:
-            traverse_point.append(far_point)
-        else:
-            traverse_point.pop(0)
-            traverse_point.append(far_point)
+        if far_point is not None:
+            if len(traverse_point) < max_points:
+                traverse_point.append(far_point)
+            else:
+                traverse_point.pop(0)
+                traverse_point.append(far_point)
+            
 
         draw_circles(frame, traverse_point)
-        return far_point, cnt_centroid
+        print(str(average_far_point))
+        return average_far_point, cnt_centroid
 
 class Canvas:
     def __init__(self, name, canvas_img):
@@ -160,7 +171,7 @@ class Canvas:
         self.paint_color = (0, 0, 0)
         self.prev_coord = None
         self.name = name
-        self.radius = 5
+        self.radius = 10
         
     def set_color(self, color: tuple):
         self.paint_color = color
@@ -171,7 +182,8 @@ class Canvas:
     def show(self):
         cv2.imshow(self.name, self.canvas_img)
     def reset(self):
-        self.canvas_img = original_img
+        self.canvas_img = self.original_img.copy()
+        self.show()
         
     def draw(self, coord):
         
@@ -184,11 +196,11 @@ class Canvas:
                  coord, self.paint_color, self.radius)
         self.prev_coord = coord
         self.show()
-        
         """
+        
         cv2.circle(self.canvas_img, coord, self.radius, self.paint_color, -1)
         self.show()
-
+        
 
 def main(): 
     global hand_hist
@@ -236,7 +248,6 @@ def main():
                 finger_brush = None
         if pressed_key == ord('r'):
             canvas.reset()
-            is_hand_hist_created = False
             results = None
                 
     cv2.destroyAllWindows()
